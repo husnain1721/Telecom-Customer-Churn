@@ -1,0 +1,406 @@
+---
+title: "Telco Customer Churn"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Loading Libraries and Preparing Data:
+
+```{r, warning=FALSE, message=FALSE}
+# Load necessary libraries
+library(tidyverse)
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(ROCR)
+library(ggplot2)
+```
+
+
+```{r}
+data <- read.csv("Telco_Customer_Churn (1).csv")
+
+colSums(is.na(data))
+```
+
+```{r}
+data <- na.omit(data)
+data <- data %>%
+  select(-customerID)
+str(data)
+```
+```{r}
+# Loop through all character columns and print unique values
+character_columns <- sapply(data, is.character)
+
+# Iterate over the character columns and print unique values
+for (col_name in names(data)[character_columns]) {
+  cat("Unique values in column", col_name, ":\n")
+  print(unique(data[[col_name]]))
+  cat("\n") # Adding a newline for better readability
+}
+```
+
+
+```{r}
+data <- as.data.frame(lapply(data, function(x) {
+  if (is.character(x)) {
+    x[x == "No internet service"] <- "No"
+  }
+  return(x)
+}))
+
+# Convert all character columns to numeric
+data <- as.data.frame(lapply(data, function(x) {
+  if (is.character(x)) {
+    as.factor(x)
+  } else {
+    x
+  }
+}))
+
+data$SeniorCitizen <- as.factor(data$SeniorCitizen)
+
+summary(data)
+```
+
+
+## Exploratory Data Analysis
+
+
+
+```{r}
+ggplot(data, aes(x = Churn, y = TotalCharges)) +
+  geom_boxplot(fill = "lightgreen") +
+  labs(title = "Distribution of Total Charges by Churn Status",
+       x = "Churn Status",
+       y = "Total Charges") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+ggplot(data, aes(x = Churn, y = tenure)) +
+  geom_boxplot(fill = "lightgreen") +
+  labs(title = "Distribution of Tenure by Churn Status",
+       x = "Churn Status",
+       y = "Tenure") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+ggplot(data, aes(x = Churn, y = MonthlyCharges)) +
+  geom_boxplot(fill = "lightgreen") +
+  labs(title = "Distribution of Monthly Charges by Churn Status",
+       x = "Churn Status",
+       y = "Monthly Charges") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r, warning=FALSE, message=FALSE}
+res <- data %>%
+  group_by(gender, Churn) %>%
+  summarize(Count = n()) %>%
+  mutate(proportion = Count / sum(Count))
+
+# Create a stacked bar chart
+ggplot(res, aes(x = gender, y = proportion, fill = Churn)) +
+  geom_bar(stat = "identity", position = "fill", width = 0.7) +
+  labs(title = "Proportion of Customers by Churn Status & Gender",
+       x = "Gender",
+       y = "Proportion") +
+  scale_fill_brewer(palette = "Set2") +  # Custom color palette
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  geom_text(aes(label = scales::percent(proportion), group = Churn),
+            position = position_fill(vjust = 0.5),
+            size = 3, angle = 90, hjust = 0.5, vjust = 0.5)
+```
+
+```{r, warning=FALSE, message=FALSE}
+res <- data %>%
+  group_by(SeniorCitizen, Churn) %>%
+  summarize(Count = n()) %>%
+  mutate(proportion = Count / sum(Count))
+
+# Create a stacked bar chart
+ggplot(res, aes(x = SeniorCitizen, y = proportion, fill = Churn)) +
+  geom_bar(stat = "identity", position = "fill", width = 0.7) +
+  labs(title = "Proportion of Customers by Churn Status & Senior Citizen Status",
+       x = "Senior Citizen Status",
+       y = "Proportion") +
+  scale_fill_brewer(palette = "Set2") +  # Custom color palette
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  geom_text(aes(label = scales::percent(proportion), group = Churn),
+            position = position_fill(vjust = 0.5),
+            size = 3, angle = 90, hjust = 0.5, vjust = 0.5)
+```
+
+
+```{r, warning=FALSE, message=FALSE}
+res <- data %>%
+  group_by(Married, Churn) %>%
+  summarize(Count = n()) %>%
+  mutate(proportion = Count / sum(Count))
+
+# Create a stacked bar chart
+ggplot(res, aes(x = Married, y = proportion, fill = Churn)) +
+  geom_bar(stat = "identity", position = "fill", width = 0.7) +
+  labs(title = "Proportion of Customers by Churn Status & Marital Status",
+       x = "Marital Status",
+       y = "Proportion") +
+  scale_fill_brewer(palette = "Set2") +  # Custom color palette
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  geom_text(aes(label = scales::percent(proportion), group = Churn),
+            position = position_fill(vjust = 0.5),
+            size = 3, angle = 90, hjust = 0.5, vjust = 0.5)
+```
+
+```{r, warning=FALSE, message=FALSE}
+res <- data %>%
+  group_by(Contract, Churn) %>%
+  summarize(Count = n()) %>%
+  mutate(proportion = Count / sum(Count))
+
+# Create a stacked bar chart
+ggplot(res, aes(x = Contract, y = proportion, fill = Churn)) +
+  geom_bar(stat = "identity", position = "fill", width = 0.7) +
+  labs(title = "Proportion of Customers by Churn Status & Contract",
+       x = "Contract",
+       y = "Proportion") +
+  scale_fill_brewer(palette = "Set2") +  # Custom color palette
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  geom_text(aes(label = scales::percent(proportion), group = Churn),
+            position = position_fill(vjust = 0.5),
+            size = 3, angle = 90, hjust = 0.5, vjust = 0.5)
+```
+
+
+```{r, warning=FALSE, message=FALSE}
+res <- data %>%
+  group_by(InternetService, Churn) %>%
+  summarize(Count = n()) %>%
+  mutate(proportion = Count / sum(Count))
+
+# Create a stacked bar chart
+ggplot(res, aes(x = InternetService, y = proportion, fill = Churn)) +
+  geom_bar(stat = "identity", position = "fill", width = 0.7) +
+  labs(title = "Proportion of Customers by Churn Status & InternetService",
+       x = "InternetService",
+       y = "Proportion") +
+  scale_fill_brewer(palette = "Set2") +  # Custom color palette
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  geom_text(aes(label = scales::percent(proportion), group = Churn),
+            position = position_fill(vjust = 0.5),
+            size = 3, angle = 90, hjust = 0.5, vjust = 0.5)
+```
+
+
+
+
+```{r, warning=FALSE, message=FALSE}
+res <- data %>%
+  group_by(PaymentMethod, Churn) %>%
+  summarize(Count = n()) %>%
+  mutate(proportion = Count / sum(Count))
+
+# Create a stacked bar chart
+ggplot(res, aes(x = PaymentMethod, y = proportion, fill = Churn)) +
+  geom_bar(stat = "identity", position = "fill", width = 0.7) +
+  labs(title = "Proportion of Customers by Churn Status & PaymentMethod",
+       x = "PaymentMethod",
+       y = "Proportion") +
+  scale_fill_brewer(palette = "Set2") +  # Custom color palette
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  geom_text(aes(label = scales::percent(proportion), group = Churn),
+            position = position_fill(vjust = 0.5),
+            size = 3, angle = 90, hjust = 0.5, vjust = 0.5)
+```
+
+```{r, warning=FALSE, message=FALSE}
+res <- data %>%
+  group_by(Churn) %>%
+  summarize(Count = n()) %>%
+  mutate(proportion = Count / sum(Count))
+
+# Create a stacked bar chart
+ggplot(res, aes(x = Churn, y = proportion, fill = Churn)) +
+  geom_bar(stat = "identity", position = "fill", width = 0.7) +
+  labs(title = "Proportion of Customers by Churn Status",
+       x = "Churn Status",
+       y = "Proportion") +
+  scale_fill_brewer(palette = "Set2") +  # Custom color palette
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  geom_text(aes(label = scales::percent(proportion), group = Churn),
+            position = position_fill(vjust = 0.5),
+            size = 3, angle = 90, hjust = 0.5, vjust = 0.5)
+```
+
+
+```{r}
+df <- data
+# Calculate the IQR for MonthlyCharges
+monthly_charges_iqr <- IQR(df$MonthlyCharges, na.rm = TRUE)
+monthly_charges_q1 <- quantile(df$MonthlyCharges, 0.25, na.rm = TRUE)
+monthly_charges_q3 <- quantile(df$MonthlyCharges, 0.75, na.rm = TRUE)
+
+# Calculate outlier bounds for MonthlyCharges
+lower_bound_monthly <- monthly_charges_q1 - 1.5 * monthly_charges_iqr
+upper_bound_monthly <- monthly_charges_q3 + 1.5 * monthly_charges_iqr
+
+# Identify outliers in MonthlyCharges
+monthly_charges_outliers <- df$MonthlyCharges[df$MonthlyCharges < lower_bound_monthly | df$MonthlyCharges > upper_bound_monthly]
+
+# Print outliers in MonthlyCharges
+print(monthly_charges_outliers)
+
+# Calculate the IQR for TotalCharges
+total_charges_iqr <- IQR(df$TotalCharges, na.rm = TRUE)
+total_charges_q1 <- quantile(df$TotalCharges, 0.25, na.rm = TRUE)
+total_charges_q3 <- quantile(df$TotalCharges, 0.75, na.rm = TRUE)
+
+# Calculate outlier bounds for TotalCharges
+lower_bound_total <- total_charges_q1 - 1.5 * total_charges_iqr
+upper_bound_total <- total_charges_q3 + 1.5 * total_charges_iqr
+
+# Identify outliers in TotalCharges
+total_charges_outliers <- df$TotalCharges[df$TotalCharges < lower_bound_total | df$TotalCharges > upper_bound_total]
+
+# Print outliers in TotalCharges
+print(total_charges_outliers)
+
+# Calculate the IQR for Tenure
+tenure_iqr <- IQR(df$tenure, na.rm = TRUE)
+tenure_q1 <- quantile(df$tenure, 0.25, na.rm = TRUE)
+tenure_q3 <- quantile(df$tenure, 0.75, na.rm = TRUE)
+
+# Calculate outlier bounds for tenure
+lower_bound_total <- tenure_q1 - 1.5 * tenure_iqr
+upper_bound_total <- tenure_q3 + 1.5 * tenure_iqr
+
+# Identify outliers in tenure
+tenure_outliers <- df$tenure[df$tenure < lower_bound_total | df$tenure > upper_bound_total]
+
+# Print outliers in tenure
+print(tenure_outliers)
+```
+
+
+## Data Modelling:
+
+```{r, warning=FALSE, message=FALSE}
+# Split the data into training and testing sets
+set.seed(123) # For reproducibility
+trainIndex <- createDataPartition(data$Churn, p = 0.7, list = FALSE)
+train_data <- data[trainIndex, ]
+test_data <- data[-trainIndex, ]
+
+# Logistic Regression
+logit_model <- glm(Churn ~ ., 
+                   data = train_data, 
+                   family = binomial)
+
+# Predictions on test set
+logit_pred <- predict(logit_model, 
+                      test_data, 
+                      type = "response")
+logit_pred_class <- ifelse(logit_pred > 0.5, 
+                           "Yes", "No")
+
+# Evaluate performance
+confusionMatrix(table(factor(logit_pred_class), 
+                      factor(test_data$Churn)), 
+                mode = "everything")
+```
+
+
+```{r}
+set.seed(1)
+# Random Forest
+rf_model <- randomForest(Churn ~ .,
+                         data = train_data)
+
+# Predictions on test set
+rf_pred <- predict(rf_model,
+                   test_data)
+confusionMatrix(table(rf_pred, 
+                      factor(test_data$Churn)), 
+                mode = "everything")
+```
+
+## Hyperparameters Tuning:
+
+```{r}
+# Hyperparameter Tuning for Random Forest
+# Define a grid for hyperparameter tuning
+rf_grid <- expand.grid(
+  .mtry = c(2, 4, 6, 8, 10, 12, 14, 16)
+)
+
+# Train the Random Forest model with 10-fold cross-validation
+rf_train <- train(
+  Churn ~ ., 
+  data = train_data,
+  method = "rf",
+  trControl = trainControl(method = "cv", number = 5),  # 5-fold cross-validation
+  tuneGrid = rf_grid,
+  metric = "Accuracy"
+)
+
+# Print best Random Forest hyperparameters
+print(rf_train$bestTune)
+
+rf_pred <- predict.train(rf_train, test_data)
+
+confusionMatrix(table(rf_pred, factor(test_data$Churn)), 
+                         mode = "everything")
+```
+
+```{r, warning=FALSE, message=FALSE}
+# Extract Logistic Regression coefficients (Feature importance as coefficients)
+logit_importance_df <- data.frame(
+  Feature = names(coef(logit_model))[-1],  # Exclude the intercept
+  Coefficient = coef(logit_model)[-1]  # Exclude the intercept
+)
+# Logistic Regression Feature Importance Plot
+ggplot(logit_importance_df, aes(x = reorder(Feature, Coefficient),
+                                y = Coefficient)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Logistic Regression - Feature Importance",
+       x = "Features", y = "Coefficient Value") +
+  theme(axis.text = element_text(size = 10))
+```
+
+
+```{r}
+# Extract Random Forest feature importance
+rf_importance <- randomForest::importance(rf_model)
+rf_importance_df <- data.frame(
+  Feature = rownames(rf_importance),
+  Importance = rf_importance[, 1]
+)
+
+# Random Forest Feature Importance Plot
+ggplot(rf_importance_df, aes(x = reorder(Feature, Importance), 
+                             y = Importance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Random Forest - Feature Importance",
+       x = "Features", y = "Importance") +
+  theme(axis.text = element_text(size = 10))
+```
+
